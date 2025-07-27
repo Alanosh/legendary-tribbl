@@ -1,0 +1,73 @@
+name: Build Kotlin Fat JAR
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Kotlin
+        run: |
+          curl -s https://get.sdkman.io | bash
+          source "$HOME/.sdkman/bin/sdkman-init.sh"
+          sdk install kotlin
+          kotlinc -version
+
+      - name: Debug directory structure
+        run: |
+          ls -la .
+          ls -la memecoin-kotlin/
+          ls -la memecoin-kotlin/libs/
+          ls -la memecoin-kotlin/src/main/kotlin/com/xai/memecoin/
+          ls -la memecoin-kotlin/memecoin_data/
+
+      - name: Create build directories
+        run: |
+          mkdir -p memecoin-kotlin/build/classes memecoin-kotlin/build/jar memecoin-kotlin/build/temp
+
+      - name: Compile Kotlin code
+        run: |
+          kotlinc \
+            -d memecoin-kotlin/build/classes \
+            -cp "memecoin-kotlin/libs/kotlin-coroutines-1.10.2.jar:memecoin-kotlin/libs/solanaj-1.20.4.jar:memecoin-kotlin/libs/bcprov-jdk18on-1.81.jar:memecoin-kotlin/libs/okio-3.15.0.jar:memecoin-kotlin/libs/okhttp-5.1.0.jar:memecoin-kotlin/libs/jackson-annotations-2.19.2.jar:memecoin-kotlin/libs/jackson-module-kotlin-2.19.2.jar:memecoin-kotlin/libs/jackson-core-2.19.2.jar:memecoin-kotlin/libs/jackson-databind-2.19.2.jar:memecoin-kotlin/libs/smile-core-4.4.0.jar:memecoin-kotlin/libs/smile-data-2.6.0.jar" \
+            memecoin-kotlin/src/main/kotlin/com/xai/memecoin/Main.kt \
+            memecoin-kotlin/src/main/kotlin/com/xai/memecoin/WebSocketFetcher.kt
+
+      - name: Extract dependency JARs
+        run: |
+          cd memecoin-kotlin/build/temp
+          for jar in ../../libs/*.jar; do
+            if [[ $jar != *"junit"* ]]; then
+              jar xf $jar
+            fi
+          done
+          cp -r ../classes/* .
+
+      - name: Create manifest
+        run: |
+          echo "Main-Class: com.xai.memecoin.MainKt" > memecoin-kotlin/build/temp/manifest.txt
+
+      - name: Create fat JAR
+        run: |
+          cd memecoin-kotlin/build/temp
+          jar cfm ../jar/memecoin-kotlin-1.0-SNAPSHOT-all.jar manifest.txt .
+          cd ../../..
+
+      - name: Upload fat JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memecoin-fat-jar
+          path: memecoin-kotlin/build/jar/memecoin-kotlin-1.0-SNAPSHOT-all.jar
