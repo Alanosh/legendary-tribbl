@@ -1,0 +1,65 @@
+name: Build Kotlin Fat JAR
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Kotlin
+        run: |
+          curl -s https://get.sdkman.io | bash
+          source "$HOME/.sdkman/bin/sdkman-init.sh"
+          sdk install kotlin
+          kotlinc -version
+
+      - name: Create build directories
+        run: |
+          mkdir -p build/classes build/jar build/temp
+
+      - name: Compile Kotlin code
+        run: |
+          kotlinc \
+            -d build/classes \
+            -cp "libs/kotlin-coroutines-1.10.2.jar:libs/solanaj-1.20.4.jar:libs/bcprov-jdk18on-1.81.jar:libs/okio-3.15.0.jar:libs/okhttp-5.1.0.jar:libs/jackson-annotations-2.19.2.jar:libs/jackson-module-kotlin-2.19.2.jar:libs/jackson-core-2.19.2.jar:libs/jackson-databind-2.19.2.jar:libs/smile-core-4.4.0.jar:libs/smile-data-2.6.0.jar" \
+            src/main/kotlin/com/xai/memecoin/Main.kt \
+            src/main/kotlin/com/xai/memecoin/WebSocketFetcher.kt
+
+      - name: Extract dependency JARs
+        run: |
+          cd build/temp
+          for jar in ../../libs/*.jar; do
+            if [[ $jar != *"junit"* ]]; then
+              jar xf $jar
+            fi
+          done
+          cp -r ../classes/* .
+
+      - name: Create manifest
+        run: |
+          echo "Main-Class: com.xai.memecoin.MainKt" > build/temp/manifest.txt
+
+      - name: Create fat JAR
+        run: |
+          cd build/temp
+          jar cfm ../jar/memecoin-kotlin-1.0-SNAPSHOT-all.jar manifest.txt .
+          cd ../..
+
+      - name: Upload fat JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memecoin-fat-jar
+          path: build/jar/memecoin-kotlin-1.0-SNAPSHOT-all.jar
